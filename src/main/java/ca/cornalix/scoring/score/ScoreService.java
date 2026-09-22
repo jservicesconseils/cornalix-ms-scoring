@@ -13,14 +13,16 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * SCRUM-14 : score par fonction NIST CSF 2.0 = moyenne des reponses
- * REPONDUES dans cette fonction (YES=1, PARTIAL=0.5, NO=0,
- * NOT_APPLICABLE exclu). Les questions non repondues sont exclues, pas
- * comptees comme 0 -- un questionnaire partiellement rempli affiche un
- * score sur ce qui a ete repondu, pas une penalite sur ce qui manque.
+ * SCRUM-14/SCRUM-15 : score = moyenne des reponses REPONDUES dans un
+ * groupe (YES=1, PARTIAL=0.5, NO=0, NOT_APPLICABLE exclu), agrege deux
+ * fois sur les memes reponses : par fonction NIST CSF 2.0
+ * ({@code scoreByFunction}, vue direction) et par controle CIS Controls
+ * v8 ({@code scoreByCisControl}, vue operationnelle). Les questions non
+ * repondues sont exclues, pas comptees comme 0 -- un questionnaire
+ * partiellement rempli affiche un score sur ce qui a ete repondu, pas une
+ * penalite sur ce qui manque.
  *
- * Recalcule a chaque appel, rien n'est mis en cache ni stocke (voir hors
- * scope de SCRUM-14).
+ * Recalcule a chaque appel, rien n'est mis en cache ni stocke.
  */
 @Service
 public class ScoreService {
@@ -36,27 +38,39 @@ public class ScoreService {
         List<AnswerSummary> answers = diagnosticClient.fetchAnswers(authorizationHeader, organizationId);
 
         Map<UUID, String> nistFunctionByQuestionId = new LinkedHashMap<>();
-        questions.forEach(q -> nistFunctionByQuestionId.put(q.id(), q.nistFunction()));
+        Map<UUID, Integer> cisControlByQuestionId = new LinkedHashMap<>();
+        questions.forEach(q -> {
+            nistFunctionByQuestionId.put(q.id(), q.nistFunction());
+            cisControlByQuestionId.put(q.id(), q.cisControl());
+        });
 
-        Map<String, List<Double>> pointsByFunction = new LinkedHashMap<>();
+        Map<String, Double> scoreByFunction = scoreBy(answers, nistFunctionByQuestionId);
+        Map<Integer, Double> scoreByCisControl = scoreBy(answers, cisControlByQuestionId);
+
+        Double overallScore = scoreByFunction.isEmpty() ? null : average(new ArrayList<>(scoreByFunction.values()));
+
+        return new ScoreResponse(organizationId, overallScore, scoreByFunction, scoreByCisControl);
+    }
+
+    /** Agrege les reponses par la cle fournie (fonction NIST, ou controle CIS) -- meme logique, deux groupements. */
+    private <K> Map<K, Double> scoreBy(List<AnswerSummary> answers, Map<UUID, K> keyByQuestionId) {
+        Map<K, List<Double>> pointsByKey = new LinkedHashMap<>();
+
         for (AnswerSummary answer : answers) {
-            String nistFunction = nistFunctionByQuestionId.get(answer.questionId());
-            if (nistFunction == null) {
+            K key = keyByQuestionId.get(answer.questionId());
+            if (key == null) {
                 continue; // reponse a une question qui n'existe plus dans le catalogue
             }
             Double points = pointsFor(answer.value());
             if (points == null) {
                 continue; // NOT_APPLICABLE (ou valeur inconnue), exclu du calcul
             }
-            pointsByFunction.computeIfAbsent(nistFunction, key -> new ArrayList<>()).add(points);
+            pointsByKey.computeIfAbsent(key, k -> new ArrayList<>()).add(points);
         }
 
-        Map<String, Double> scoreByFunction = new LinkedHashMap<>();
-        pointsByFunction.forEach((function, points) -> scoreByFunction.put(function, average(points)));
-
-        Double overallScore = scoreByFunction.isEmpty() ? null : average(new ArrayList<>(scoreByFunction.values()));
-
-        return new ScoreResponse(organizationId, overallScore, scoreByFunction);
+        Map<K, Double> scoreByKey = new LinkedHashMap<>();
+        pointsByKey.forEach((key, points) -> scoreByKey.put(key, average(points)));
+        return scoreByKey;
     }
 
     private Double pointsFor(String value) {

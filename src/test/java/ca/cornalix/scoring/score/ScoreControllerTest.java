@@ -39,13 +39,14 @@ class ScoreControllerTest {
     void lireLeScore_avecTenantIdCorrespondant_renvoie200() throws Exception {
         UUID orgId = UUID.randomUUID();
         when(scoreService.computeScore(eq(orgId), anyString()))
-                .thenReturn(new ScoreResponse(orgId, 0.75, Map.of("IDENTIFY", 0.75)));
+                .thenReturn(new ScoreResponse(orgId, 0.75, Map.of("IDENTIFY", 0.75), Map.of(1, 0.75)));
 
         mockMvc.perform(get("/api/v1/scoring/organizations/{orgId}/score", orgId)
                         .with(jwt().jwt(builder -> builder.claim("tenant_id", orgId.toString()))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.overallScore").value(0.75))
-                .andExpect(jsonPath("$.scoreByFunction.IDENTIFY").value(0.75));
+                .andExpect(jsonPath("$.scoreByFunction.IDENTIFY").value(0.75))
+                .andExpect(jsonPath("$.scoreByCisControl.1").value(0.75));
     }
 
     @Test

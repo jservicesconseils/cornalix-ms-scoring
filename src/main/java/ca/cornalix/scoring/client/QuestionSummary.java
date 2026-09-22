@@ -7,11 +7,12 @@ import java.util.UUID;
 /**
  * Vue minimale d'une question telle que renvoyee par
  * GET /api/v1/diagnostics/questions sur cornalix-ms-diagnostic (SCRUM-10/11)
- * -- seuls les champs utiles au calcul du score sont repris ici. Les autres
- * champs de la reponse (cisControl, cisSafeguard, translations, ...) sont
- * ignores plutot que de faire echouer la deserialisation (contrat HTTP
- * tolerant aux champs supplementaires).
+ * -- seuls les champs utiles au calcul du score sont repris ici (SCRUM-14 :
+ * nistFunction : SCRUM-15 : cisControl). Les autres champs de la reponse
+ * (cisSafeguard, translations, ...) sont ignores plutot que de faire
+ * echouer la deserialisation (contrat HTTP tolerant aux champs
+ * supplementaires).
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record QuestionSummary(UUID id, String nistFunction) {
+public record QuestionSummary(UUID id, int cisControl, String nistFunction) {
 }

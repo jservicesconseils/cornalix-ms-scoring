@@ -28,19 +28,19 @@ class ScoreServiceTest {
     }
 
     @Test
-    void computeScore_reponsesMixtes_calculeLaMoyenneParFonctionEnExcluantNotApplicable() {
+    void computeScore_reponsesMixtes_calculeLaMoyenneParFonctionEtParControleEnExcluantNotApplicable() {
         ScoreService service = service();
         UUID orgId = UUID.randomUUID();
-        UUID q1 = UUID.randomUUID(); // IDENTIFY, YES
-        UUID q2 = UUID.randomUUID(); // IDENTIFY, NO
-        UUID q3 = UUID.randomUUID(); // PROTECT, PARTIAL
-        UUID q4 = UUID.randomUUID(); // PROTECT, NOT_APPLICABLE -- exclu
+        UUID q1 = UUID.randomUUID(); // IDENTIFY / controle 1, YES
+        UUID q2 = UUID.randomUUID(); // IDENTIFY / controle 1, NO
+        UUID q3 = UUID.randomUUID(); // PROTECT / controle 4, PARTIAL
+        UUID q4 = UUID.randomUUID(); // PROTECT / controle 4, NOT_APPLICABLE -- exclu
 
         when(diagnosticClient.fetchQuestions("Bearer token")).thenReturn(List.of(
-                new QuestionSummary(q1, "IDENTIFY"),
-                new QuestionSummary(q2, "IDENTIFY"),
-                new QuestionSummary(q3, "PROTECT"),
-                new QuestionSummary(q4, "PROTECT")
+                new QuestionSummary(q1, 1, "IDENTIFY"),
+                new QuestionSummary(q2, 1, "IDENTIFY"),
+                new QuestionSummary(q3, 4, "PROTECT"),
+                new QuestionSummary(q4, 4, "PROTECT")
         ));
         when(diagnosticClient.fetchAnswers("Bearer token", orgId)).thenReturn(List.of(
                 new AnswerSummary(q1, "YES"),
@@ -54,6 +54,9 @@ class ScoreServiceTest {
         assertEquals(0.5, response.scoreByFunction().get("IDENTIFY")); // (1 + 0) / 2
         assertEquals(0.5, response.scoreByFunction().get("PROTECT"));  // seul PARTIAL compte (q4 exclue)
         assertEquals(0.5, response.overallScore()); // moyenne des 2 fonctions, toutes deux a 0.5
+
+        assertEquals(0.5, response.scoreByCisControl().get(1)); // meme regroupement, par controle cette fois
+        assertEquals(0.5, response.scoreByCisControl().get(4));
     }
 
     @Test
@@ -64,8 +67,8 @@ class ScoreServiceTest {
         UUID q2 = UUID.randomUUID(); // jamais repondue
 
         when(diagnosticClient.fetchQuestions("Bearer token")).thenReturn(List.of(
-                new QuestionSummary(q1, "IDENTIFY"),
-                new QuestionSummary(q2, "IDENTIFY")
+                new QuestionSummary(q1, 1, "IDENTIFY"),
+                new QuestionSummary(q2, 1, "IDENTIFY")
         ));
         when(diagnosticClient.fetchAnswers("Bearer token", orgId)).thenReturn(List.of(
                 new AnswerSummary(q1, "YES")
@@ -74,6 +77,7 @@ class ScoreServiceTest {
         ScoreResponse response = service.computeScore(orgId, "Bearer token");
 
         assertEquals(1.0, response.scoreByFunction().get("IDENTIFY"));
+        assertEquals(1.0, response.scoreByCisControl().get(1));
     }
 
     @Test
@@ -88,6 +92,7 @@ class ScoreServiceTest {
 
         assertNull(response.overallScore());
         assertTrue(response.scoreByFunction().isEmpty());
+        assertTrue(response.scoreByCisControl().isEmpty());
     }
 
     @Test
@@ -104,5 +109,6 @@ class ScoreServiceTest {
         ScoreResponse response = service.computeScore(orgId, "Bearer token");
 
         assertNull(response.overallScore());
+        assertTrue(response.scoreByCisControl().isEmpty());
     }
 }
