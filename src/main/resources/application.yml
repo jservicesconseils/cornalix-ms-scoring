@@ -1,0 +1,26 @@
+server:
+  port: 8083   # 8080 = core-api, 8081 = cornalix-ms-identity, 8082 = cornalix-ms-diagnostic
+
+spring:
+  application:
+    name: cornalix-ms-scoring
+
+# Coordonnees du User Pool Cognito qui emet les jetons acceptes par cette
+# API -- le meme pool que cornalix-ms-identity et cornalix-ms-diagnostic
+# (SCRUM-1/SCRUM-2), deja deploye en dev. Surchargeable via variables
+# d'environnement pour un autre environnement (staging/prod).
+cornalix:
+  cognito:
+    region: ${COGNITO_REGION:ca-central-1}
+    user-pool-id: ${COGNITO_USER_POOL_ID:ca-central-1_9cLNOsUJ3}
+  # cornalix-ms-diagnostic est la seule source de verite pour le catalogue
+  # de questions et les reponses (SCRUM-14) -- ce service ne stocke rien
+  # lui-meme, il recalcule le score a chaque appel.
+  diagnostic:
+    base-url: ${DIAGNOSTIC_BASE_URL:http://localhost:8082}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
