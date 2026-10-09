@@ -12,9 +12,6 @@ provider "aws" {
   region = var.aws_region
 }
 
-# Ressources partagees (VPC, cluster ECS, ALB, role d'execution, ECR...)
-# creees par infra/prod/platform (SCRUM-34/35/36, repo cornalix-ms-identity)
-# -- ce stack ne fait que les lire, jamais les modifier.
 data "terraform_remote_state" "platform" {
   backend = "s3"
 
@@ -29,11 +26,16 @@ locals {
   platform = data.terraform_remote_state.platform.outputs
 }
 
-############################################
-# Task definition -- pas de datasource propre (ce service calcule le
-# score a la volee en appelant cornalix-ms-diagnostic, voir SCRUM-25),
-# donc pas de secrets RDS a injecter, juste DIAGNOSTIC_BASE_URL.
-############################################
+data "terraform_remote_state" "frontend_dev" {
+  backend = "s3"
+
+  config = {
+    bucket = "cornalix-tfstate-591859078355"
+    key    = "dev/frontend/terraform.tfstate"
+    region = "ca-central-1"
+  }
+}
+
 resource "aws_ecs_task_definition" "scoring" {
   family                   = "${var.project}-${var.environment}-${var.service_name}"
   requires_compatibilities = ["FARGATE"]
@@ -55,10 +57,7 @@ resource "aws_ecs_task_definition" "scoring" {
 
       environment = [
         { name = "SPRING_PROFILES_ACTIVE", value = "prod" },
-        { name = "CORNALIX_CORS_ALLOWED_ORIGINS", value = "https://cornalix.ca" },
-        # Appel serveur-a-serveur vers diagnostic -- ne resoudra/ne
-        # fonctionnera qu'une fois le domaine cornalix.ca branche
-        # (SCRUM-38), le routage de l'ALB se fait par en-tete Host.
+        { name = "CORNALIX_CORS_ALLOWED_ORIGINS", value = "https://${data.terraform_remote_state.frontend_dev.outputs.cloudfront_domain_name}" },
         { name = "DIAGNOSTIC_BASE_URL", value = "https://${var.diagnostic_hostname}" },
       ]
 
@@ -67,7 +66,7 @@ resource "aws_ecs_task_definition" "scoring" {
         options = {
           "awslogs-group"         = local.platform.ecs_log_group_name
           "awslogs-region"        = var.aws_region
-          "awslogs-stream-prefix" = var.service_name
+          "awslogs-stream-prefix" = "${var.environment}-${var.service_name}"
         }
       }
     }
@@ -78,9 +77,6 @@ resource "aws_ecs_task_definition" "scoring" {
   }
 }
 
-############################################
-# Target group + regle d'ecoute ALB (routage par nom d'hote, SCRUM-36)
-############################################
 resource "aws_lb_target_group" "scoring" {
   name        = "${var.project}-${var.environment}-${var.service_name}"
   port        = var.container_port
@@ -118,9 +114,6 @@ resource "aws_lb_listener_rule" "scoring" {
   }
 }
 
-############################################
-# Service ECS
-############################################
 resource "aws_ecs_service" "scoring" {
   name            = "${var.project}-${var.environment}-${var.service_name}"
   cluster         = local.platform.ecs_cluster_id
