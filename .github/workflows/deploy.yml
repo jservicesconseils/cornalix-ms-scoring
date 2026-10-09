@@ -1,0 +1,60 @@
+# CI/CD (SCRUM-33) : a chaque push sur develop (branche d'integration,
+# voir convention de branches du projet), construit l'image Docker et
+# la deploie sur le service ECS Fargate existant.
+#
+# Authentification AWS par federation OIDC (role-to-assume) -- aucune
+# cle d'acces long-terme stockee en secret GitHub. Le role
+# cornalix-prod-github-actions-scoring (infra/prod/platform/github-oidc.tf,
+# cornalix-ms-identity) n'autorise que push vers le depot ECR
+# cornalix-scoring et deploiement du service ECS cornalix-prod-scoring
+# -- rien d'autre.
+name: Deploy
+
+on:
+  push:
+    branches: [develop]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ca-central-1
+  ECR_REPOSITORY: cornalix-scoring
+  ECS_CLUSTER: cornalix-prod
+  ECS_SERVICE: cornalix-prod-scoring
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        env:
+          REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build \
+            -t "$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" \
+            -t "$REGISTRY/$ECR_REPOSITORY:latest" \
+            .
+          docker push "$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          docker push "$REGISTRY/$ECR_REPOSITORY:latest"
+
+      - name: Deploy to ECS
+        run: |
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$ECS_SERVICE" \
+            --force-new-deployment
