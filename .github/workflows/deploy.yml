@@ -1,4 +1,4 @@
-# CI/CD (SCRUM-33) : a chaque push sur develop (branche d'integration,
+# CI/CD (SCRUM-33) : a chaque push sur master (branche de prod,
 # voir convention de branches du projet), construit l'image Docker et
 # la deploie sur le service ECS Fargate existant.
 #
@@ -12,7 +12,7 @@ name: Deploy
 
 on:
   push:
-    branches: [develop]
+    branches: [master]
 
 permissions:
   id-token: write
@@ -27,6 +27,10 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Variables (AWS_ROLE_ARN) vivent dans l'environnement GitHub "prod",
+    # pas au niveau du repo -- sans cette ligne, vars.AWS_ROLE_ARN serait
+    # vide et le step suivant echouerait.
+    environment: prod
     steps:
       - uses: actions/checkout@v4
 
