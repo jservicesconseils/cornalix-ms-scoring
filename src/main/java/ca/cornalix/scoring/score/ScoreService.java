@@ -11,6 +11,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 /**
  * SCRUM-14/SCRUM-15 : score = moyenne des reponses REPONDUES dans un
@@ -35,6 +37,42 @@ public class ScoreService {
 
     public ScoreResponse computeScore(UUID organizationId, String authorizationHeader) {
         List<QuestionSummary> questions = diagnosticClient.fetchQuestions(authorizationHeader);
+        return computeScoreUsing(organizationId, authorizationHeader, questions);
+    }
+
+    // Score de plusieurs organisations en un seul appel (SCRUM-43) --
+    // remplace le pattern N+1 cote frontend (portefeuille Consultant :
+    // un appel par organisation) par un seul aller-retour navigateur,
+    // avec le catalogue de questions recupere une seule fois et les
+    // appels vers cornalix-ms-diagnostic (un par organisation, cote
+    // propre a chacune) lances en parallele plutot que sequentiellement.
+    public Map<UUID, ScoreResponse> computeScores(List<UUID> organizationIds, String authorizationHeader) {
+        List<QuestionSummary> questions = diagnosticClient.fetchQuestions(authorizationHeader);
+
+        List<CompletableFuture<ScoreResponse>> futures = organizationIds.stream()
+                .map(organizationId -> CompletableFuture.supplyAsync(
+                        () -> computeScoreUsing(organizationId, authorizationHeader, questions)))
+                .toList();
+
+        Map<UUID, ScoreResponse> scoresByOrganizationId = new LinkedHashMap<>();
+        for (CompletableFuture<ScoreResponse> future : futures) {
+            try {
+                ScoreResponse response = future.join();
+                scoresByOrganizationId.put(response.organizationId(), response);
+            } catch (CompletionException e) {
+                // Deballe l'exception d'origine (ex. DiagnosticUnavailableException)
+                // pour que le @RestControllerAdvice existant la reconnaisse --
+                // CompletionException elle-meme n'est geree par aucun handler.
+                if (e.getCause() instanceof RuntimeException re) {
+                    throw re;
+                }
+                throw e;
+            }
+        }
+        return scoresByOrganizationId;
+    }
+
+    private ScoreResponse computeScoreUsing(UUID organizationId, String authorizationHeader, List<QuestionSummary> questions) {
         List<AnswerSummary> answers = diagnosticClient.fetchAnswers(authorizationHeader, organizationId);
 
         Map<UUID, String> nistFunctionByQuestionId = new LinkedHashMap<>();

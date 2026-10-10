@@ -33,6 +33,12 @@
       <artifactId>spring-boot-starter-actuator</artifactId>
     </dependency>
 
+    <!-- Validation des DTO (@NotEmpty, SCRUM-43 : BatchScoreRequest) -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-validation</artifactId>
+    </dependency>
+
     <!-- Securite : valide les jetons JWT emis par Amazon Cognito (meme User
          Pool que cornalix-ms-identity, une seule source d'identite pour
          toute la plateforme) -->
