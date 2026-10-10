@@ -33,11 +33,10 @@ public record TenantClaims(UUID tenantId, List<UUID> tenantScope) {
 
     public static TenantClaims from(Jwt jwt) {
         UUID tenantId = parseTenantId(jwt.getClaimAsString("tenant_id"), jwt.getSubject());
-
-        if (tenantId == null) {
-            return new TenantClaims(null, List.of());
-        }
-
+        // tenantScope est lu meme sans tenantId (SCRUM-45) : un Consultant
+        // cybersecurite n'a jamais de tenant_id principal, seulement un
+        // claim tenant_scope porte par le portefeuille d'organisations qui
+        // lui ont donne acces.
         return new TenantClaims(tenantId, parseTenantScope(jwt.getClaimAsString("tenant_scope"), tenantId));
     }
 
@@ -65,20 +64,24 @@ public record TenantClaims(UUID tenantId, List<UUID> tenantScope) {
     }
 
     // Sur une claim tenant_scope illisible ou absente, on retombe sur
-    // [tenantId] plutot que de faire confiance a une valeur suspecte --
-    // l'appelant garde acces a son propre tenant, jamais plus.
+    // [tenantId] si un tenantId existe (l'appelant garde acces a son
+    // propre tenant, jamais plus) -- ou sur une liste vide sinon
+    // (Consultant sans tenant_id et sans portefeuille encore accorde,
+    // SCRUM-45 : aucun repli possible, aucun acces).
     private static List<UUID> parseTenantScope(String rawTenantScope, UUID tenantId) {
+        List<UUID> fallback = tenantId == null ? List.of() : List.of(tenantId);
+
         if (rawTenantScope == null || rawTenantScope.isBlank()) {
-            return List.of(tenantId);
+            return fallback;
         }
 
         try {
             List<String> ids = OBJECT_MAPPER.readValue(rawTenantScope, new TypeReference<List<String>>() { });
             List<UUID> tenantScope = ids.stream().map(UUID::fromString).toList();
-            return tenantScope.isEmpty() ? List.of(tenantId) : tenantScope;
+            return tenantScope.isEmpty() ? fallback : tenantScope;
         } catch (Exception e) {
             log.warn("Claim tenant_scope illisible pour le tenant {}, acces restreint a ce seul tenant : {}", tenantId, rawTenantScope);
-            return List.of(tenantId);
+            return fallback;
         }
     }
 }
