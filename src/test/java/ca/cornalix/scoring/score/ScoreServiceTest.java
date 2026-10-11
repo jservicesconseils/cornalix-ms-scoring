@@ -3,6 +3,7 @@ package ca.cornalix.scoring.score;
 import ca.cornalix.scoring.client.AnswerSummary;
 import ca.cornalix.scoring.client.DiagnosticClient;
 import ca.cornalix.scoring.client.QuestionSummary;
+import ca.cornalix.scoring.history.ScoreHistoryService;
 import ca.cornalix.scoring.score.dto.ScoreResponse;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -26,8 +27,11 @@ class ScoreServiceTest {
     @Mock
     private DiagnosticClient diagnosticClient;
 
+    @Mock
+    private ScoreHistoryService scoreHistoryService;
+
     private ScoreService service() {
-        return new ScoreService(diagnosticClient);
+        return new ScoreService(diagnosticClient, scoreHistoryService);
     }
 
     @Test
@@ -60,6 +64,8 @@ class ScoreServiceTest {
 
         assertEquals(0.5, response.scoreByCisControl().get(1)); // meme regroupement, par controle cette fois
         assertEquals(0.5, response.scoreByCisControl().get(4));
+
+        verify(scoreHistoryService).recordSnapshot(orgId, 0.5);
     }
 
     @Test

@@ -1,0 +1,18 @@
+# Profil "prod" (SCRUM-47) : active via SPRING_PROFILES_ACTIVE=prod sur
+# la tache ECS. Remplace uniquement la source de donnees H2 de
+# application.yml par la vraie instance RDS Postgres -- meme instance
+# partagee avec cornalix-ms-identity et cornalix-ms-diagnostic (une
+# seule base logique "cornalix", decision SCRUM-35), jamais codee en
+# dur ici. DB_HOST/DB_PORT/DB_NAME/DB_USERNAME/DB_PASSWORD fournis a la
+# tache ECS depuis SSM Parameter Store.
+spring:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}
+    driver-class-name: org.postgresql.Driver
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false

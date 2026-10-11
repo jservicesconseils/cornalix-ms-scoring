@@ -3,6 +3,7 @@ package ca.cornalix.scoring.score;
 import ca.cornalix.scoring.client.AnswerSummary;
 import ca.cornalix.scoring.client.DiagnosticClient;
 import ca.cornalix.scoring.client.QuestionSummary;
+import ca.cornalix.scoring.history.ScoreHistoryService;
 import ca.cornalix.scoring.score.dto.ScoreResponse;
 import org.springframework.stereotype.Service;
 
@@ -30,9 +31,11 @@ import java.util.concurrent.CompletionException;
 public class ScoreService {
 
     private final DiagnosticClient diagnosticClient;
+    private final ScoreHistoryService scoreHistoryService;
 
-    public ScoreService(DiagnosticClient diagnosticClient) {
+    public ScoreService(DiagnosticClient diagnosticClient, ScoreHistoryService scoreHistoryService) {
         this.diagnosticClient = diagnosticClient;
+        this.scoreHistoryService = scoreHistoryService;
     }
 
     public ScoreResponse computeScore(UUID organizationId, String authorizationHeader) {
@@ -86,6 +89,13 @@ public class ScoreService {
         Map<Integer, Double> scoreByCisControl = scoreBy(answers, cisControlByQuestionId);
 
         Double overallScore = scoreByFunction.isEmpty() ? null : average(new ArrayList<>(scoreByFunction.values()));
+
+        // Historise le score calcule (SCRUM-47) -- au plus un point par
+        // jour civil, voir ScoreHistoryService. Effet de bord assume sur
+        // un calcul en lecture : c'est la seule maniere, sans tache
+        // planifiee, de faire apparaitre un point des qu'un score est
+        // reellement consulte.
+        scoreHistoryService.recordSnapshot(organizationId, overallScore);
 
         return new ScoreResponse(organizationId, overallScore, scoreByFunction, scoreByCisControl);
     }
