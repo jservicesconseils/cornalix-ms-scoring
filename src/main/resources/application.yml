@@ -5,6 +5,26 @@ spring:
   application:
     name: cornalix-ms-scoring
 
+  # Base de donnees H2 en memoire (SCRUM-47) : premiere donnee stockee
+  # par ce service (historique des scores, pour la tendance dans le
+  # temps) -- tout le reste reste calcule a la volee. DB_CLOSE_DELAY=-1
+  # evite la perte de donnees constatee ailleurs (SCRUM-31) quand Hikari
+  # evince la connexion (veille du laptop).
+  datasource:
+    url: jdbc:h2:mem:scoringdb;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+
+  h2:
+    console:
+      enabled: true
+
 # Coordonnees du User Pool Cognito qui emet les jetons acceptes par cette
 # API -- le meme pool que cornalix-ms-identity et cornalix-ms-diagnostic
 # (SCRUM-1/SCRUM-2), deja deploye en dev. Surchargeable via variables
@@ -14,10 +34,38 @@ cornalix:
     region: ${COGNITO_REGION:ca-central-1}
     user-pool-id: ${COGNITO_USER_POOL_ID:ca-central-1_9cLNOsUJ3}
   # cornalix-ms-diagnostic est la seule source de verite pour le catalogue
-  # de questions et les reponses (SCRUM-14) -- ce service ne stocke rien
-  # lui-meme, il recalcule le score a chaque appel.
+  # de questions et les reponses (SCRUM-14) -- ce service ne recalcule le
+  # score lui-meme qu'a partir de la, mais garde desormais un historique
+  # (SCRUM-47) de ses propres resultats.
   diagnostic:
     base-url: ${DIAGNOSTIC_BASE_URL:http://localhost:8082}
+
+# SCRUM-49 : retry + circuit breaker sur l'appel HTTP vers cornalix-ms-
+# diagnostic (DiagnosticClient, instance "diagnosticClient"). Les deux ne
+# voient jamais RestClientException -- seulement DiagnosticUnavailableException,
+# seule exception qui traverse la frontiere de la methode annotee.
+resilience4j:
+  retry:
+    instances:
+      diagnosticClient:
+        max-attempts: 3
+        wait-duration: 200ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        retry-exceptions:
+          - ca.cornalix.scoring.client.DiagnosticUnavailableException
+        ignore-exceptions:
+          - io.github.resilience4j.circuitbreaker.CallNotPermittedException
+  circuitbreaker:
+    instances:
+      diagnosticClient:
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+        record-exceptions:
+          - ca.cornalix.scoring.client.DiagnosticUnavailableException
 
 management:
   endpoints:

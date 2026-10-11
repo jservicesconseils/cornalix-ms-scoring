@@ -94,4 +94,31 @@ class TenantClaimsTest {
 
         assertThrows(TenantAccessDeniedException.class, () -> claims.assertAccessTo(autreTenant));
     }
+
+    // SCRUM-45 : un Consultant n'a jamais de tenant_id principal, seulement
+    // un tenant_scope porte par son portefeuille -- regression du bug ou
+    // tenant_scope etait ignore des que tenant_id etait absent.
+    @Test
+    void sansTenantId_tenantScopePresent_accesAuxTenantsListes() {
+        UUID tenantA = UUID.randomUUID();
+        UUID tenantB = UUID.randomUUID();
+        String tenantScopeJson = "[\"" + tenantA + "\",\"" + tenantB + "\"]";
+        Jwt jwt = jwtWithClaims(Map.of("tenant_scope", tenantScopeJson));
+
+        TenantClaims claims = TenantClaims.from(jwt);
+
+        assertNull(claims.tenantId());
+        assertTrue(claims.hasAccessTo(tenantA));
+        assertTrue(claims.hasAccessTo(tenantB));
+    }
+
+    @Test
+    void sansTenantIdNiTenantScope_aucunRepliAucunAcces() {
+        Jwt jwt = jwtWithClaims(Map.of());
+
+        TenantClaims claims = TenantClaims.from(jwt);
+
+        assertTrue(claims.tenantScope().isEmpty());
+        assertFalse(claims.hasAccessTo(UUID.randomUUID()));
+    }
 }

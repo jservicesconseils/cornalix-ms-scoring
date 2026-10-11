@@ -56,9 +56,19 @@ resource "aws_ecs_task_definition" "scoring" {
       }]
 
       environment = [
-        { name = "SPRING_PROFILES_ACTIVE", value = "prod" },
+        { name = "SPRING_PROFILES_ACTIVE", value = "prod" }, # profil applicatif "prod" = Postgres (par opposition a H2) -- pas lie a l'environnement de deploiement AWS
         { name = "CORNALIX_CORS_ALLOWED_ORIGINS", value = "https://${data.terraform_remote_state.frontend_dev.outputs.cloudfront_domain_name}" },
         { name = "DIAGNOSTIC_BASE_URL", value = "https://${var.diagnostic_hostname}" },
+      ]
+
+      # Base "cornalix_dev" (SCRUM-47) -- isolee de la base prod comme
+      # pour identity/diagnostic, meme instance RDS partagee.
+      secrets = [
+        { name = "DB_HOST", valueFrom = "arn:aws:ssm:${var.aws_region}:${local.platform.aws_account_id}:parameter${local.platform.dev_rds_ssm_parameter_prefix}/host" },
+        { name = "DB_PORT", valueFrom = "arn:aws:ssm:${var.aws_region}:${local.platform.aws_account_id}:parameter${local.platform.dev_rds_ssm_parameter_prefix}/port" },
+        { name = "DB_NAME", valueFrom = "arn:aws:ssm:${var.aws_region}:${local.platform.aws_account_id}:parameter${local.platform.dev_rds_ssm_parameter_prefix}/db_name" },
+        { name = "DB_USERNAME", valueFrom = "arn:aws:ssm:${var.aws_region}:${local.platform.aws_account_id}:parameter${local.platform.dev_rds_ssm_parameter_prefix}/username" },
+        { name = "DB_PASSWORD", valueFrom = "arn:aws:ssm:${var.aws_region}:${local.platform.aws_account_id}:parameter${local.platform.dev_rds_ssm_parameter_prefix}/password" },
       ]
 
       logConfiguration = {

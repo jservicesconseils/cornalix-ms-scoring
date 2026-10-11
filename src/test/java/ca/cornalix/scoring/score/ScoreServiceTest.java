@@ -3,6 +3,7 @@ package ca.cornalix.scoring.score;
 import ca.cornalix.scoring.client.AnswerSummary;
 import ca.cornalix.scoring.client.DiagnosticClient;
 import ca.cornalix.scoring.client.QuestionSummary;
+import ca.cornalix.scoring.history.ScoreHistoryService;
 import ca.cornalix.scoring.score.dto.ScoreResponse;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -12,9 +13,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 import java.util.UUID;
 
+import java.util.Map;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -23,8 +27,11 @@ class ScoreServiceTest {
     @Mock
     private DiagnosticClient diagnosticClient;
 
+    @Mock
+    private ScoreHistoryService scoreHistoryService;
+
     private ScoreService service() {
-        return new ScoreService(diagnosticClient);
+        return new ScoreService(diagnosticClient, scoreHistoryService);
     }
 
     @Test
@@ -57,6 +64,8 @@ class ScoreServiceTest {
 
         assertEquals(0.5, response.scoreByCisControl().get(1)); // meme regroupement, par controle cette fois
         assertEquals(0.5, response.scoreByCisControl().get(4));
+
+        verify(scoreHistoryService).recordSnapshot(orgId, 0.5);
     }
 
     @Test
@@ -110,5 +119,27 @@ class ScoreServiceTest {
 
         assertNull(response.overallScore());
         assertTrue(response.scoreByCisControl().isEmpty());
+    }
+
+    @Test
+    void computeScores_plusieursOrganisations_neRecupereLeCatalogueQuUneSeuleFois() {
+        ScoreService service = service();
+        UUID orgA = UUID.randomUUID();
+        UUID orgB = UUID.randomUUID();
+        UUID q1 = UUID.randomUUID();
+
+        when(diagnosticClient.fetchQuestions("Bearer token")).thenReturn(List.of(
+                new QuestionSummary(q1, 1, "IDENTIFY")));
+        when(diagnosticClient.fetchAnswers("Bearer token", orgA)).thenReturn(List.of(
+                new AnswerSummary(q1, "YES")));
+        when(diagnosticClient.fetchAnswers("Bearer token", orgB)).thenReturn(List.of(
+                new AnswerSummary(q1, "NO")));
+
+        Map<UUID, ScoreResponse> scores = service.computeScores(List.of(orgA, orgB), "Bearer token");
+
+        assertEquals(2, scores.size());
+        assertEquals(1.0, scores.get(orgA).overallScore());
+        assertEquals(0.0, scores.get(orgB).overallScore());
+        verify(diagnosticClient, org.mockito.Mockito.times(1)).fetchQuestions("Bearer token");
     }
 }

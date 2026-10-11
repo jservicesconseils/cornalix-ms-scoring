@@ -33,12 +33,52 @@
       <artifactId>spring-boot-starter-actuator</artifactId>
     </dependency>
 
+    <!-- Validation des DTO (@NotEmpty, SCRUM-43 : BatchScoreRequest) -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-validation</artifactId>
+    </dependency>
+
+    <!-- Persistance (SCRUM-47) : historique des scores calcules, pour la
+         tendance dans le temps, premiere donnee que ce service stocke
+         lui-meme (tout le reste reste calcule a la volee). -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-jpa</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>com.h2database</groupId>
+      <artifactId>h2</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+
     <!-- Securite : valide les jetons JWT emis par Amazon Cognito (meme User
          Pool que cornalix-ms-identity, une seule source d'identite pour
          toute la plateforme) -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+    </dependency>
+
+    <!-- Retry + circuit breaker (SCRUM-49) sur l'appel HTTP vers
+         cornalix-ms-diagnostic (besoin de l'AOP Spring pour que les
+         annotations @Retry/@CircuitBreaker prennent effet). -->
+    <dependency>
+      <groupId>io.github.resilience4j</groupId>
+      <artifactId>resilience4j-spring-boot3</artifactId>
+      <version>2.2.0</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-aop</artifactId>
     </dependency>
 
     <dependency>

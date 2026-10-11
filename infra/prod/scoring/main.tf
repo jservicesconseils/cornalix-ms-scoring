@@ -30,9 +30,10 @@ locals {
 }
 
 ############################################
-# Task definition -- pas de datasource propre (ce service calcule le
-# score a la volee en appelant cornalix-ms-diagnostic, voir SCRUM-25),
-# donc pas de secrets RDS a injecter, juste DIAGNOSTIC_BASE_URL.
+# Task definition -- historise desormais ses propres calculs (SCRUM-47,
+# ScoreSnapshot) : premiere donnee stockee par ce service, meme instance
+# RDS partagee que cornalix-ms-identity/diagnostic (decision SCRUM-35),
+# secrets RDS injectes comme pour les deux autres.
 ############################################
 resource "aws_ecs_task_definition" "scoring" {
   family                   = "${var.project}-${var.environment}-${var.service_name}"
@@ -60,6 +61,14 @@ resource "aws_ecs_task_definition" "scoring" {
         # fonctionnera qu'une fois le domaine cornalix.ca branche
         # (SCRUM-38), le routage de l'ALB se fait par en-tete Host.
         { name = "DIAGNOSTIC_BASE_URL", value = "https://${var.diagnostic_hostname}" },
+      ]
+
+      secrets = [
+        { name = "DB_HOST", valueFrom = "arn:aws:ssm:${var.aws_region}:${local.platform.aws_account_id}:parameter${local.platform.rds_ssm_parameter_prefix}/host" },
+        { name = "DB_PORT", valueFrom = "arn:aws:ssm:${var.aws_region}:${local.platform.aws_account_id}:parameter${local.platform.rds_ssm_parameter_prefix}/port" },
+        { name = "DB_NAME", valueFrom = "arn:aws:ssm:${var.aws_region}:${local.platform.aws_account_id}:parameter${local.platform.rds_ssm_parameter_prefix}/db_name" },
+        { name = "DB_USERNAME", valueFrom = "arn:aws:ssm:${var.aws_region}:${local.platform.aws_account_id}:parameter${local.platform.rds_ssm_parameter_prefix}/username" },
+        { name = "DB_PASSWORD", valueFrom = "arn:aws:ssm:${var.aws_region}:${local.platform.aws_account_id}:parameter${local.platform.rds_ssm_parameter_prefix}/password" },
       ]
 
       logConfiguration = {

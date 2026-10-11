@@ -3,6 +3,7 @@ package ca.cornalix.scoring.score;
 import ca.cornalix.scoring.client.AnswerSummary;
 import ca.cornalix.scoring.client.DiagnosticClient;
 import ca.cornalix.scoring.client.QuestionSummary;
+import ca.cornalix.scoring.history.ScoreHistoryService;
 import ca.cornalix.scoring.score.dto.ScoreResponse;
 import org.springframework.stereotype.Service;
 
@@ -11,6 +12,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 /**
  * SCRUM-14/SCRUM-15 : score = moyenne des reponses REPONDUES dans un
@@ -28,13 +31,51 @@ import java.util.UUID;
 public class ScoreService {
 
     private final DiagnosticClient diagnosticClient;
+    private final ScoreHistoryService scoreHistoryService;
 
-    public ScoreService(DiagnosticClient diagnosticClient) {
+    public ScoreService(DiagnosticClient diagnosticClient, ScoreHistoryService scoreHistoryService) {
         this.diagnosticClient = diagnosticClient;
+        this.scoreHistoryService = scoreHistoryService;
     }
 
     public ScoreResponse computeScore(UUID organizationId, String authorizationHeader) {
         List<QuestionSummary> questions = diagnosticClient.fetchQuestions(authorizationHeader);
+        return computeScoreUsing(organizationId, authorizationHeader, questions);
+    }
+
+    // Score de plusieurs organisations en un seul appel (SCRUM-43) --
+    // remplace le pattern N+1 cote frontend (portefeuille Consultant :
+    // un appel par organisation) par un seul aller-retour navigateur,
+    // avec le catalogue de questions recupere une seule fois et les
+    // appels vers cornalix-ms-diagnostic (un par organisation, cote
+    // propre a chacune) lances en parallele plutot que sequentiellement.
+    public Map<UUID, ScoreResponse> computeScores(List<UUID> organizationIds, String authorizationHeader) {
+        List<QuestionSummary> questions = diagnosticClient.fetchQuestions(authorizationHeader);
+
+        List<CompletableFuture<ScoreResponse>> futures = organizationIds.stream()
+                .map(organizationId -> CompletableFuture.supplyAsync(
+                        () -> computeScoreUsing(organizationId, authorizationHeader, questions)))
+                .toList();
+
+        Map<UUID, ScoreResponse> scoresByOrganizationId = new LinkedHashMap<>();
+        for (CompletableFuture<ScoreResponse> future : futures) {
+            try {
+                ScoreResponse response = future.join();
+                scoresByOrganizationId.put(response.organizationId(), response);
+            } catch (CompletionException e) {
+                // Deballe l'exception d'origine (ex. DiagnosticUnavailableException)
+                // pour que le @RestControllerAdvice existant la reconnaisse --
+                // CompletionException elle-meme n'est geree par aucun handler.
+                if (e.getCause() instanceof RuntimeException re) {
+                    throw re;
+                }
+                throw e;
+            }
+        }
+        return scoresByOrganizationId;
+    }
+
+    private ScoreResponse computeScoreUsing(UUID organizationId, String authorizationHeader, List<QuestionSummary> questions) {
         List<AnswerSummary> answers = diagnosticClient.fetchAnswers(authorizationHeader, organizationId);
 
         Map<UUID, String> nistFunctionByQuestionId = new LinkedHashMap<>();
@@ -48,6 +89,13 @@ public class ScoreService {
         Map<Integer, Double> scoreByCisControl = scoreBy(answers, cisControlByQuestionId);
 
         Double overallScore = scoreByFunction.isEmpty() ? null : average(new ArrayList<>(scoreByFunction.values()));
+
+        // Historise le score calcule (SCRUM-47) -- au plus un point par
+        // jour civil, voir ScoreHistoryService. Effet de bord assume sur
+        // un calcul en lecture : c'est la seule maniere, sans tache
+        // planifiee, de faire apparaitre un point des qu'un score est
+        // reellement consulte.
+        scoreHistoryService.recordSnapshot(organizationId, overallScore);
 
         return new ScoreResponse(organizationId, overallScore, scoreByFunction, scoreByCisControl);
     }
