@@ -57,7 +57,7 @@ resource "aws_ecs_task_definition" "scoring" {
 
       environment = [
         { name = "SPRING_PROFILES_ACTIVE", value = "prod" }, # profil applicatif "prod" = Postgres (par opposition a H2) -- pas lie a l'environnement de deploiement AWS
-        { name = "CORNALIX_CORS_ALLOWED_ORIGINS", value = "https://${data.terraform_remote_state.frontend_dev.outputs.cloudfront_domain_name}" },
+        { name = "CORNALIX_CORS_ALLOWED_ORIGINS", value = "https://${data.terraform_remote_state.frontend_dev.outputs.cloudfront_domain_name},https://${data.terraform_remote_state.frontend_dev.outputs.custom_domain_name}" },
         { name = "DIAGNOSTIC_BASE_URL", value = "https://${var.diagnostic_hostname}" },
       ]
 
