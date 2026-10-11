@@ -40,6 +40,33 @@ cornalix:
   diagnostic:
     base-url: ${DIAGNOSTIC_BASE_URL:http://localhost:8082}
 
+# SCRUM-49 : retry + circuit breaker sur l'appel HTTP vers cornalix-ms-
+# diagnostic (DiagnosticClient, instance "diagnosticClient"). Les deux ne
+# voient jamais RestClientException -- seulement DiagnosticUnavailableException,
+# seule exception qui traverse la frontiere de la methode annotee.
+resilience4j:
+  retry:
+    instances:
+      diagnosticClient:
+        max-attempts: 3
+        wait-duration: 200ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        retry-exceptions:
+          - ca.cornalix.scoring.client.DiagnosticUnavailableException
+        ignore-exceptions:
+          - io.github.resilience4j.circuitbreaker.CallNotPermittedException
+  circuitbreaker:
+    instances:
+      diagnosticClient:
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+        record-exceptions:
+          - ca.cornalix.scoring.client.DiagnosticUnavailableException
+
 management:
   endpoints:
     web:
